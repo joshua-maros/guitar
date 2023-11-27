@@ -2,7 +2,7 @@ use std::f64::consts::PI;
 
 use scratchpad::{Canvas, FloatExt, Vec2, WaitUntilClick};
 
-const GUITAR_STRING_POINTS: usize = 4096;
+const GUITAR_STRING_POINTS: usize = 1024;
 const GUITAR_STRING_LENGTH: f64 = 0.65;
 const GUITAR_STRING_DENSITY: f64 = 5.25e-3;
 const GUITAR_STRING_TENSION: f64 = 60.0;
@@ -41,11 +41,16 @@ fn main() {
     // }
 
     let mut canvas = Canvas::new(512, 512);
-    for step in 0..5_000_000 {
-        let dt = 0.000_000_2;
+    let mut step = 0;
+    loop {
+        let dt = 0.000_005;
         let t = step as f64 * dt;
+        if t > 10.0 {
+            break;
+        }
+        step += 1;
 
-        if step % 100 == 0 {
+        if step % 10_000 == 0 {
             canvas.clear(0.0);
             let mut points = Vec::new();
             // Converts the guitar string's points into a series of coordinates to be displayed on the screen.
