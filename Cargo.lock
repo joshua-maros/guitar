@@ -394,7 +394,9 @@ dependencies = [
 name = "guitar"
 version = "0.1.0"
 dependencies = [
+ "itertools 0.12.0",
  "scratchpad",
+ "wav",
 ]
 
 [[package]]
@@ -461,6 +463,15 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
 dependencies = [
  "either",
 ]
@@ -1074,6 +1085,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "riff"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9b1a3d5f46d53f4a3478e2be4a5a5ce5108ea58b100dcd139830eae7f79a3a1"
+
+[[package]]
 name = "rustix"
 version = "0.38.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1110,7 +1127,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_math",
  "image 0.24.7",
- "itertools",
+ "itertools 0.10.5",
  "lazy_static",
  "minifb",
  "noise",
@@ -1353,6 +1370,15 @@ name = "wasm-bindgen-shared"
 version = "0.2.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d046c5d029ba91a1ed14da14dca44b68bf2f124cfbaf741c54151fdb3e0750b"
+
+[[package]]
+name = "wav"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a65e199c799848b4f997072aa4d673c034f80f40191f97fe2f0a23f410be1609"
+dependencies = [
+ "riff",
+]
 
 [[package]]
 name = "wayland-client"

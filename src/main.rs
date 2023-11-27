@@ -1,11 +1,15 @@
-use std::f64::consts::PI;
+use std::{f64::consts::PI, fs::File};
 
+use itertools::Itertools;
 use scratchpad::{Canvas, FloatExt, Vec2, WaitUntilClick};
+use wav::{BitDepth, Header};
 
 const GUITAR_STRING_POINTS: usize = 1024;
 const GUITAR_STRING_LENGTH: f64 = 0.65;
 const GUITAR_STRING_DENSITY: f64 = 5.25e-3;
-const GUITAR_STRING_TENSION: f64 = 60.0;
+const GUITAR_STRING_TENSION: f64 = 90.0;
+const INTERNAL_DISSIPATIVE_TERM_OF_VISCOELASTIC_TYPE: f64 = 9e-8;
+const DELTA_TIME: f64 = 1e-6;
 
 #[derive(Clone, Copy, Default)]
 struct StringPoint {
@@ -42,10 +46,11 @@ fn main() {
 
     let mut canvas = Canvas::new(512, 512);
     let mut step = 0;
+    let mut prev_curvature = [0.0; GUITAR_STRING_POINTS];
+    let mut audio_data = Vec::new();
     loop {
-        let dt = 0.000_005;
-        let t = step as f64 * dt;
-        if t > 10.0 {
+        let t = step as f64 * DELTA_TIME;
+        if t > 3.0 {
             break;
         }
         step += 1;
@@ -59,7 +64,10 @@ fn main() {
                 let y = p.displacement;
                 // let y = displacement_derivative[i];
                 // let y = displacement_curvature[i];
-                points.push(Vec2::new(x as f32, y.map_range(-0.01..0.01, 1.0..0.0) as f32));
+                points.push(Vec2::new(
+                    x as f32,
+                    y.map_range(-0.01..0.01, 1.0..0.0) as f32,
+                ));
             }
             canvas.draw_path(&points, 1.0);
             canvas.show();
@@ -80,22 +88,45 @@ fn main() {
         displacement_curvature[GUITAR_STRING_POINTS - 1] =
             displacement_curvature[GUITAR_STRING_POINTS - 2];
 
+        let mut curvature_dt = [0.0; GUITAR_STRING_POINTS];
+        for i in 0..GUITAR_STRING_POINTS {
+            curvature_dt[i] = (displacement_curvature[i] - prev_curvature[i]) / DELTA_TIME;
+        }
+
         // Applies various forces to the string.
         for (i, p) in string.points.iter_mut().enumerate() {
             let x = i as f64 / (GUITAR_STRING_POINTS - 1) as f64;
             let finger_force = pluck_force(x, t);
-            // let finger_force = 0.0;
             let tension_force = GUITAR_STRING_TENSION * displacement_curvature[i];
-            p.velocity += (finger_force + tension_force) / GUITAR_STRING_DENSITY * dt;
+            let damping_force = INTERNAL_DISSIPATIVE_TERM_OF_VISCOELASTIC_TYPE
+                * GUITAR_STRING_TENSION
+                * curvature_dt[i];
+            let drag_force = 0.0;
+            // let drag_force = -0.01 * p.velocity;
+            p.velocity += (finger_force + tension_force + damping_force + drag_force)
+                / GUITAR_STRING_DENSITY
+                * DELTA_TIME;
         }
+
+        prev_curvature = displacement_curvature;
 
         // Applies the velocity of the string to itself.
         for p in string.points.iter_mut() {
-            p.displacement += p.velocity * dt;
+            p.displacement += p.velocity * DELTA_TIME;
         }
 
         string.points[0] = StringPoint::default();
         string.points[GUITAR_STRING_POINTS - 1] = StringPoint::default();
+        audio_data.push(string.points[GUITAR_STRING_POINTS / 8].velocity);
     }
-    canvas.wait_until_click();
+    let max = audio_data.iter().fold(0.0f64, |a, &b| a.max(b));
+    let normalized = audio_data.iter().map(|&x| (x / max) as f32).collect_vec();
+
+    let rate = 1.0 / DELTA_TIME;
+    let rate = rate as u32;
+    println!("{rate}Hz");
+    let header = Header::new(wav::WAV_FORMAT_IEEE_FLOAT, 1, rate, 32);
+    let mut file = File::create("audio.wav").unwrap();
+    let data = BitDepth::ThirtyTwoFloat(normalized);
+    wav::write(header, &data, &mut file).unwrap();
 }
