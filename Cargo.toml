@@ -1,11 +1,3 @@
-[package]
-name = "guitar"
-version = "0.1.0"
-edition = "2021"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-itertools = "0.12.0"
-scratchpad = { path = "../earl_grey/scratchpad/scratchpad" }
-wav = "1.0.0"
+members = ["guitar", "random_context", "scratchpad"]

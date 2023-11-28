@@ -1,0 +1,17 @@
+[package]
+edition = "2021"
+name = "scratchpad"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy_math = "0.8.1"
+image = "0.24.3"
+itertools = "0.10.4"
+lazy_static = "1.4.0"
+minifb = "0.23.0"
+noise = "0.7.0"
+ordered-float = "3.0"
+palette = "0.6.1"
+random_context = {path = "../random_context"}
