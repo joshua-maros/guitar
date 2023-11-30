@@ -1,6 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(specialization)]
-
 use std::{
     collections::HashSet,
     hash::Hash,
