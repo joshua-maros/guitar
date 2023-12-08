@@ -7,6 +7,8 @@ use constants::{MAX_SIMULATION_TIME, SCREEN_REFRESH_INTERVAL};
 use guitar_string::GuitarString;
 use itertools::Itertools;
 use scratchpad::{Canvas, FloatExt, Vec2, WaitUntilClick};
+use sprs::{CsMat, TriMat};
+use sprs_ldl::Ldl;
 use wav::{BitDepth, Header};
 
 use crate::constants::DELTA_TIME;
@@ -57,71 +59,105 @@ fn get_points<const N: usize>(
     points
 }
 
+fn shape_fn(diff: f32) -> f32 {
+    (1.0 - diff.abs()).max(0.0)
+}
+
+fn shape_fn_d1(diff: f32) -> f32 {
+    if diff.abs() <= 1.0 {
+        -diff.signum()
+    } else {
+        0.0
+    }
+}
+
+fn int_two_shape_fns(center1: f32, center2: f32) -> f32 {
+    let difference = (center1 - center2).abs();
+    if difference < 1.0 {
+        0.5 * difference.powi(3) - difference.powi(2) + 2.0 / 3.0
+    } else if difference < 2.0 {
+        -1.0 / 6.0 * (difference - 2.0).powi(3)
+    } else {
+        0.0
+    }
+}
+
+fn int_two_shape_fn_d1s(center1: f32, center2: f32) -> f32 {
+    let difference = (center1 - center2).abs();
+    if difference < 1.0 {
+        difference.map_range(0.0..1.0, 2.0..-1.0)
+    } else if difference < 2.0 {
+        difference.map_range(1.0..2.0, -1.0..0.0)
+    } else {
+        0.0
+    }
+}
+
 fn main2() {
-    const SIZE: usize = 256;
-    let mut displacement = Canvas::new(SIZE, SIZE);
-    let mut velocity = Canvas::new(SIZE, SIZE);
-    let mut debug = Canvas::new(SIZE, SIZE);
-
-    displacement.clear(0.0);
-    velocity.clear(0.0);
-
-    displacement.shade(|point| {
-        // let len = (point - Vec2::new(0.5, 0.5)).length();
-        // (-len.powi(2) / 0.01).exp()
-        ((point.x - 0.5) * TAU).sin() * ((point.y - 0.5) * TAU).sin() * 0.3
-    });
-
-    let d = 1.0 / SIZE as f32;
-    let dt = 1e-3;
-
-    for frame in 0..1_000_000 {
-        for y in 0..SIZE {
-            for x in 0..SIZE {
-                let x_points = get_points(
-                    &displacement,
-                    [x, y],
-                    [[-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0]],
-                );
-                let x_partial = fourth_derivative(x_points, d);
-                let y_points = get_points(
-                    &displacement,
-                    [x, y],
-                    [[0, -2], [0, -1], [0, 0], [0, 1], [0, 2]],
-                );
-                let y_partial = fourth_derivative(y_points, d);
-
-                let mixed_a_points =
-                    get_points(&displacement, [x, y], [[-1, -1], [0, -1], [1, -1]]);
-                let mixed_a = curvature(mixed_a_points, d);
-                let mixed_b_points = get_points(&displacement, [x, y], [[-1, 0], [0, 0], [1, 0]]);
-                let mixed_b = curvature(mixed_b_points, d);
-                let mixed_c_points = get_points(&displacement, [x, y], [[-1, 1], [0, 1], [1, 1]]);
-                let mixed_c = curvature(mixed_c_points, d);
-
-                let mixed = curvature([mixed_a, mixed_b, mixed_c], d);
-
-                let acceleration = -1e-6 * (x_partial + 2.0 * mixed + y_partial);
-                let new_velocity = velocity.get_pixel(x, y) + acceleration * dt;
-                velocity.set_pixel(x, y, new_velocity);
-                let new_displacement =
-                    displacement.get_pixel(x, y) + (new_velocity - 0.5 * acceleration * dt) * dt;
-                displacement.set_pixel(x, y, new_displacement);
-
-                debug.set_pixel(x, y, x_partial / 10_000.0);
+    const NUM_NODES: usize = 10;
+    let mut a = [0.0; NUM_NODES];
+    let mut b = [0.0; NUM_NODES];
+    for i in 0..NUM_NODES {
+        let x = i as f32 / (NUM_NODES - 1) as f32 - 0.5;
+        let v = (-x * x / 0.05).exp();
+        a[i] = v;
+        b[i] = v;
+    }
+    let dt = 0.01;
+    let dt2 = dt * dt;
+    let mut window = Canvas::new(512, 512);
+    for _ in 0..1000 {
+        let mut matrix = [[0.0; NUM_NODES]; NUM_NODES];
+        let mut vector = [0.0; NUM_NODES];
+        for test_fn in 0..NUM_NODES {
+            let test_fn_center = test_fn as f32;
+            for shape_fn in 0..NUM_NODES {
+                let shape_fn_center = shape_fn as f32;
+                matrix[test_fn][shape_fn] +=
+                    int_two_shape_fns(test_fn_center, shape_fn_center) / dt2;
+                matrix[test_fn][shape_fn] -= int_two_shape_fn_d1s(test_fn_center, shape_fn_center);
+                vector[test_fn] +=
+                    a[shape_fn] * 2.0 / dt2 * int_two_shape_fns(test_fn_center, shape_fn_center);
+                vector[test_fn] -=
+                    b[shape_fn] / dt2 * int_two_shape_fns(test_fn_center, shape_fn_center);
             }
         }
-        if frame % 10 == 0 {
-            println!("Frame {}", frame);
-            displacement.show();
-            // debug.show();
-            // (&mut displacement, &mut debug).wait_until_click();
+
+        println!("{:#?}", matrix);
+        println!("{:#?}", vector);
+
+        let mut smat = TriMat::new((NUM_NODES, NUM_NODES));
+        for row in 0..NUM_NODES {
+            for col in 0..NUM_NODES {
+                let val = matrix[row][col];
+                if val != 0.0 {
+                    smat.add_triplet(row, col, val);
+                }
+            }
         }
+        let smat = smat.to_csc::<usize>();
+        let solver = Ldl::new().numeric(smat.view()).unwrap();
+        let vector = solver.solve(&vector[..]);
+
+        window.clear(0.0);
+        let mut nodes = Vec::new();
+        for i in 0..NUM_NODES {
+            let x = i as f32 / (NUM_NODES - 1) as f32;
+            let y = b[i].map_range(-1.0..1.0, 1.0..0.0);
+            nodes.push(Vec2::new(x, y));
+        }
+        window.draw_path(&nodes, 1.0);
+        window.show();
+        a = b;
+        b = vector.try_into().unwrap();
+        window.wait_until_click();
     }
+    window.wait_until_click();
 }
 
 fn main() {
     main2();
+    return;
 
     let mut string = GuitarString::new();
 
