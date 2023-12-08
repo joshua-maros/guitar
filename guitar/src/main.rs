@@ -35,7 +35,87 @@ fn update_window(canvas: &mut Canvas<f32>, string: &GuitarString) {
     }
 }
 
+fn curvature(points: [f32; 3], d: f32) -> f32 {
+    (points[0] - 2.0 * points[1] + points[2]) / (d * d)
+}
+
+fn fourth_derivative(points: [f32; 5], d: f32) -> f32 {
+    (points[0] - 4.0 * points[1] + 6.0 * points[2] - 4.0 * points[3] + points[4]) / (d * d * d * d)
+}
+
+fn get_points<const N: usize>(
+    canvas: &Canvas<f32>,
+    center: [usize; 2],
+    offsets: [[isize; 2]; N],
+) -> [f32; N] {
+    let mut points = [0.0; N];
+    for (i, offset) in offsets.iter().enumerate() {
+        let x = center[0] as isize + offset[0];
+        let y = center[1] as isize + offset[1];
+        points[i] = canvas.get_pixel(x as usize, y as usize);
+    }
+    points
+}
+
+fn main2() {
+    const SIZE: usize = 256;
+    let mut displacement = Canvas::new(SIZE, SIZE);
+    let mut velocity = Canvas::new(SIZE, SIZE);
+
+    displacement.clear(0.0);
+    velocity.clear(0.0);
+
+    displacement.shade(|point| {
+        let len = (point - Vec2::new(0.5, 0.5)).length();
+        (-len.powi(2) / 0.03).exp()
+    });
+
+    let d = 1.0 / SIZE as f32;
+    let dt = 1e-3;
+
+    for frame in 0..100_000 {
+        for y in 2..SIZE - 2 {
+            for x in 2..SIZE - 2 {
+                let x_points = get_points(
+                    &displacement,
+                    [x, y],
+                    [[-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0]],
+                );
+                let x_partial = fourth_derivative(x_points, d);
+                let y_points = get_points(
+                    &displacement,
+                    [x, y],
+                    [[0, -2], [0, -1], [0, 0], [0, 1], [0, 2]],
+                );
+                let y_partial = fourth_derivative(y_points, d);
+
+                let mixed_a_points =
+                    get_points(&displacement, [x, y], [[-1, -1], [0, -1], [1, -1]]);
+                let mixed_a = curvature(mixed_a_points, d);
+                let mixed_b_points = get_points(&displacement, [x, y], [[-1, 0], [0, 0], [1, 0]]);
+                let mixed_b = curvature(mixed_b_points, d);
+                let mixed_c_points = get_points(&displacement, [x, y], [[-1, 1], [0, 1], [1, 1]]);
+                let mixed_c = curvature(mixed_c_points, d);
+
+                let mixed = curvature([mixed_a, mixed_b, mixed_c], d);
+
+                let acceleration = -1e-7 * (x_partial + 2.0 * mixed + y_partial);
+                let new_velocity = velocity.get_pixel(x, y) + acceleration * dt;
+                velocity.set_pixel(x, y, new_velocity);
+                let new_displacement = displacement.get_pixel(x, y) + new_velocity * dt;
+                displacement.set_pixel(x, y, new_displacement);
+            }
+        }
+        if frame % 100 == 0 {
+            println!("Frame {}", frame);
+            displacement.show();
+        }
+    }
+}
+
 fn main() {
+    main2();
+
     let mut string = GuitarString::new();
 
     let mut window = Canvas::new(512, 512);

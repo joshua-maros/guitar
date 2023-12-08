@@ -182,7 +182,11 @@ impl PixelData for LinSrgba {
 
 impl Displayable for f32 {
     fn display(self) -> LinSrgba {
-        LinSrgba::new(self, self, self, 1.0)
+        if self < 0.0 {
+            LinSrgba::new(-self, 0.0, 0.0, 1.0)
+        } else {
+            LinSrgba::new(self, self, self, 1.0)
+        }
     }
 }
 
