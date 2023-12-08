@@ -58,9 +58,10 @@ fn get_points<const N: usize>(
 }
 
 fn main2() {
-    const SIZE: usize = 256;
+    const SIZE: usize = 64;
     let mut displacement = Canvas::new(SIZE, SIZE);
     let mut velocity = Canvas::new(SIZE, SIZE);
+    let mut debug = Canvas::new(SIZE, SIZE);
 
     displacement.clear(0.0);
     velocity.clear(0.0);
@@ -104,11 +105,15 @@ fn main2() {
                 velocity.set_pixel(x, y, new_velocity);
                 let new_displacement = displacement.get_pixel(x, y) + new_velocity * dt;
                 displacement.set_pixel(x, y, new_displacement);
+
+                debug.set_pixel(x, y, x_points[4]);
             }
         }
         if frame % 100 == 0 {
             println!("Frame {}", frame);
             displacement.show();
+            // debug.show();
+            // debug.wait_until_click();
         }
     }
 }
