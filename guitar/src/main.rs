@@ -1,7 +1,7 @@
 mod constants;
 mod guitar_string;
 
-use std::{f64::consts::PI, fs::File};
+use std::{f32::consts::TAU, f64::consts::PI, fs::File};
 
 use constants::{MAX_SIMULATION_TIME, SCREEN_REFRESH_INTERVAL};
 use guitar_string::GuitarString;
@@ -50,15 +50,15 @@ fn get_points<const N: usize>(
 ) -> [f32; N] {
     let mut points = [0.0; N];
     for (i, offset) in offsets.iter().enumerate() {
-        let x = center[0] as isize + offset[0];
-        let y = center[1] as isize + offset[1];
+        let x = (center[0] as isize + offset[0]).rem_euclid(canvas.width() as isize);
+        let y = (center[1] as isize + offset[1]).rem_euclid(canvas.height() as isize);
         points[i] = canvas.get_pixel(x as usize, y as usize);
     }
     points
 }
 
 fn main2() {
-    const SIZE: usize = 64;
+    const SIZE: usize = 256;
     let mut displacement = Canvas::new(SIZE, SIZE);
     let mut velocity = Canvas::new(SIZE, SIZE);
     let mut debug = Canvas::new(SIZE, SIZE);
@@ -67,16 +67,17 @@ fn main2() {
     velocity.clear(0.0);
 
     displacement.shade(|point| {
-        let len = (point - Vec2::new(0.5, 0.5)).length();
-        (-len.powi(2) / 0.03).exp()
+        // let len = (point - Vec2::new(0.5, 0.5)).length();
+        // (-len.powi(2) / 0.01).exp()
+        ((point.x - 0.5) * TAU).sin() * ((point.y - 0.5) * TAU).sin() * 0.3
     });
 
     let d = 1.0 / SIZE as f32;
     let dt = 1e-3;
 
-    for frame in 0..100_000 {
-        for y in 2..SIZE - 2 {
-            for x in 2..SIZE - 2 {
+    for frame in 0..1_000_000 {
+        for y in 0..SIZE {
+            for x in 0..SIZE {
                 let x_points = get_points(
                     &displacement,
                     [x, y],
@@ -100,20 +101,21 @@ fn main2() {
 
                 let mixed = curvature([mixed_a, mixed_b, mixed_c], d);
 
-                let acceleration = -1e-7 * (x_partial + 2.0 * mixed + y_partial);
+                let acceleration = -1e-6 * (x_partial + 2.0 * mixed + y_partial);
                 let new_velocity = velocity.get_pixel(x, y) + acceleration * dt;
                 velocity.set_pixel(x, y, new_velocity);
-                let new_displacement = displacement.get_pixel(x, y) + new_velocity * dt;
+                let new_displacement =
+                    displacement.get_pixel(x, y) + (new_velocity - 0.5 * acceleration * dt) * dt;
                 displacement.set_pixel(x, y, new_displacement);
 
-                debug.set_pixel(x, y, x_points[4]);
+                debug.set_pixel(x, y, x_partial / 10_000.0);
             }
         }
-        if frame % 100 == 0 {
+        if frame % 10 == 0 {
             println!("Frame {}", frame);
             displacement.show();
             // debug.show();
-            // debug.wait_until_click();
+            // (&mut displacement, &mut debug).wait_until_click();
         }
     }
 }
