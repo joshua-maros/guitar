@@ -73,7 +73,29 @@ fn shape_fn_d1(diff: f32) -> f32 {
 
 type FLOAT = f64;
 
-fn int_two_shape_fns(center1: f64, center2: f64) -> f64 {
+// fn int_two_shape_fns(center1: f64, center2: f64) -> f64 {
+//     let difference = (center1 - center2).abs();
+//     if difference < 1.0 {
+//         0.5 * difference.powi(3) - difference.powi(2) + 2.0 / 3.0
+//     } else if difference < 2.0 {
+//         -1.0 / 6.0 * (difference - 2.0).powi(3)
+//     } else {
+//         0.0
+//     }
+// }
+
+// fn int_two_shape_fn_d1s(center1: f64, center2: f64) -> f64 {
+//     let difference = (center1 - center2).abs();
+//     if difference < 1.0 {
+//         difference.map_range(0.0..1.0, 2.0..-1.0)
+//     } else if difference < 2.0 {
+//         difference.map_range(1.0..2.0, -1.0..0.0)
+//     } else {
+//         0.0
+//     }
+// }
+
+fn int_two_shape_fns(center1: FLOAT, center2: FLOAT) -> FLOAT {
     let difference = (center1 - center2).abs();
     if difference < 1.0 {
         0.5 * difference.powi(3) - difference.powi(2) + 2.0 / 3.0
@@ -84,7 +106,7 @@ fn int_two_shape_fns(center1: f64, center2: f64) -> f64 {
     }
 }
 
-fn int_two_shape_fn_d1s(center1: f64, center2: f64) -> f64 {
+fn int_two_shape_fn_d1s(center1: FLOAT, center2: FLOAT) -> FLOAT {
     let difference = (center1 - center2).abs();
     if difference < 1.0 {
         difference.map_range(0.0..1.0, 2.0..-1.0)
@@ -95,68 +117,108 @@ fn int_two_shape_fn_d1s(center1: f64, center2: f64) -> f64 {
     }
 }
 
+fn int_two_hermite_polys(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
+    const RESULTS: [[FLOAT; 4]; 4] = [
+        [26.0 / 35.0, 22.0 / 105.0, 9.0 / 35.0, -13.0 / 105.0],
+        [22.0 / 105.0, 8.0 / 105.0, 13.0 / 105.0, -2.0 / 35.0],
+        [9.0 / 35.0, 13.0 / 105.0, 26.0 / 35.0, -22.0 / 105.0],
+        [-13.0 / 105.0, -2.0 / 35.0, -22.0 / 105.0, 8.0 / 105.0],
+    ];
+    RESULTS[poly_type_1][poly_type_2]
+}
+
+fn int_two_hermite_poly_d1s(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
+    const RESULTS: [[FLOAT; 4]; 4] = [
+        [3.0 / 5.0, 1.0 / 10.0, -3.0 / 5.0, 1.0 / 10.0],
+        [1.0 / 10.0, 4.0 / 15.0, -1.0 / 10.0, -1.0 / 15.0],
+        [-3.0 / 5.0, -1.0 / 10.0, 3.0 / 5.0, -1.0 / 10.0],
+        [1.0 / 10.0, -1.0 / 15.0, -1.0 / 10.0, 4.0 / 15.0],
+    ];
+    RESULTS[poly_type_1][poly_type_2]
+}
+
 fn main2() {
     let mut window = Canvas::new(512, 512);
 
-    const NUM_NODES: usize = 200;
-    let mut a = [0.0; NUM_NODES];
-    let mut b = [0.0; NUM_NODES];
+    const NUM_NODES: usize = 201;
+    const NUM_PARAMS: usize = NUM_NODES * 2;
+    let mut a = [0.0; NUM_PARAMS];
+    let mut b = [0.0; NUM_PARAMS];
     for i in 0..NUM_NODES {
-        let x = i as FLOAT / (NUM_NODES - 1) as FLOAT - 0.4;
-        let v = (-x * x / 0.02).exp();
-        a[i] = v;
-        b[i] = v;
+        let x = i as FLOAT / (NUM_NODES - 1) as FLOAT - 0.5;
+        let v = (-x * x / 0.05).exp();
+        let d = -40.0 * x * (-x * x / 0.05).exp();
+        a[i * 2] = v;
+        a[i * 2 + 1] = d;
+        b[i * 2] = v;
+        b[i * 2 + 1] = d;
     }
     let dt = 1.0;
     let dt2 = dt * dt;
     let mut frame = 0;
-    loop {
-        let mut matrix = [[0.0; NUM_NODES]; NUM_NODES];
-        let mut vector = [0.0; NUM_NODES];
-        for test_fn in 0..NUM_NODES {
-            let test_fn_center = test_fn as FLOAT;
-            for shape_fn in 0..NUM_NODES {
-                let shape_fn_center = shape_fn as FLOAT;
-                matrix[test_fn][shape_fn] +=
-                    int_two_shape_fns(test_fn_center, shape_fn_center) / dt2;
-                matrix[test_fn][shape_fn] += int_two_shape_fn_d1s(test_fn_center, shape_fn_center);
-                vector[test_fn] +=
-                    b[shape_fn] * 2.0 / dt2 * int_two_shape_fns(test_fn_center, shape_fn_center);
-                vector[test_fn] -=
-                    a[shape_fn] / dt2 * int_two_shape_fns(test_fn_center, shape_fn_center);
-            }
-        }
-        for index in 0..NUM_NODES {
-            matrix[0][index] = 0.0;
-            matrix[NUM_NODES - 1][index] = 0.0;
-            matrix[index][0] = 0.0;
-            matrix[index][NUM_NODES - 1] = 0.0;
-        }
-        matrix[0][0] = 1.0;
-        matrix[NUM_NODES - 1][NUM_NODES - 1] = 1.0;
-        vector[0] = b[0];
-        vector[NUM_NODES - 1] = b[NUM_NODES - 1];
 
-        let mut smat = TriMat::new((NUM_NODES, NUM_NODES));
-        for row in 0..NUM_NODES {
-            for col in 0..NUM_NODES {
-                let val = matrix[row][col];
-                if val != 0.0 {
-                    smat.add_triplet(row, col, val);
-                }
+    let mut matrix = [[0.0; NUM_PARAMS]; NUM_PARAMS];
+    for element in 0..NUM_NODES - 1 {
+        for (test_fn_kind, shape_fn_kind) in (0..4).cartesian_product(0..4) {
+            let test_fn_node = element * 2 + test_fn_kind;
+            let shape_fn_node = element * 2 + shape_fn_kind;
+            matrix[test_fn_node][shape_fn_node] +=
+                int_two_hermite_polys(test_fn_kind, shape_fn_kind) / dt2;
+            matrix[test_fn_node][shape_fn_node] +=
+                int_two_hermite_poly_d1s(test_fn_kind, shape_fn_kind);
+        }
+    }
+    // for index in 0..NUM_PARAMS {
+    //     for p in 0..1 {
+    //         matrix[p][index] = 0.0;
+    //         matrix[NUM_PARAMS - 2 + p][index] = 0.0;
+    //         matrix[index][p] = 0.0;
+    //         matrix[index][NUM_PARAMS - 2 + p] = 0.0;
+    //     }
+    // }
+    // for p in 0..1 {
+    //     matrix[p][p] = 1.0;
+    //     matrix[NUM_PARAMS - 2 + p][NUM_PARAMS - 2 + p] = 1.0;
+    // }
+
+    let mut smat = TriMat::new((NUM_PARAMS, NUM_PARAMS));
+    for row in 0..NUM_PARAMS {
+        for col in 0..NUM_PARAMS {
+            let val = matrix[row][col];
+            if val != 0.0 {
+                smat.add_triplet(row, col, val);
             }
         }
-        let smat = smat.to_csc::<usize>();
-        let solver = Ldl::new().numeric(smat.view()).unwrap();
+    }
+    let smat = smat.to_csc::<usize>();
+    let solver = Ldl::new().numeric(smat.view()).unwrap();
+
+    loop {
+        let mut vector = [0.0; NUM_PARAMS];
+        for element in 0..NUM_NODES - 1 {
+            for (test_fn_kind, shape_fn_kind) in (0..4).cartesian_product(0..4) {
+                let test_fn_node = element * 2 + test_fn_kind;
+                let shape_fn_node = element * 2 + shape_fn_kind;
+                vector[test_fn_node] += b[shape_fn_node] * 2.0 / dt2
+                    * int_two_hermite_polys(test_fn_kind, shape_fn_kind);
+                vector[test_fn_node] -=
+                    a[shape_fn_node] / dt2 * int_two_hermite_polys(test_fn_kind, shape_fn_kind);
+            }
+        }
+        // for p in 0..1 {
+        //     vector[p] = b[p];
+        //     vector[NUM_PARAMS - 2 + p] = b[NUM_PARAMS - 2 + p];
+        // }
+
         let vector = solver.solve(&vector[..]);
 
-        if frame % 100 == 0 {
+        if frame % 1000 == 0 {
             println!("frame {}", frame);
             window.clear(0.0);
             let mut nodes = Vec::new();
             for i in 0..NUM_NODES {
                 let x = i as f32 / (NUM_NODES - 1) as f32;
-                let y = b[i].map_range(-1.0..1.0, 1.0..0.0) as f32;
+                let y = b[i * 2].map_range(-1.0..1.0, 1.0..0.0) as f32;
                 nodes.push(Vec2::new(x, y));
             }
             window.draw_path(&nodes, 1.0);
@@ -176,8 +238,8 @@ fn main3() {
     let mut disp = [0.0; NUM_NODES];
     let mut vel = [0.0; NUM_NODES];
     for i in 0..NUM_NODES {
-        let x = i as FLOAT / (NUM_NODES - 1) as FLOAT - 0.4;
-        let v = (-x * x / 0.02).exp();
+        let x = i as FLOAT / (NUM_NODES - 1) as FLOAT - 0.5;
+        let v = (-x * x / 0.05).exp();
         disp[i] = v;
     }
     let dt = 1.0;
