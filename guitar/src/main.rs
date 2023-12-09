@@ -94,19 +94,21 @@ fn int_two_shape_fn_d1s(center1: f32, center2: f32) -> f32 {
 }
 
 fn main2() {
-    const NUM_NODES: usize = 10;
+    let mut window = Canvas::new(512, 512);
+
+    const NUM_NODES: usize = 50;
     let mut a = [0.0; NUM_NODES];
     let mut b = [0.0; NUM_NODES];
     for i in 0..NUM_NODES {
-        let x = i as f32 / (NUM_NODES - 1) as f32 - 0.5;
-        let v = (-x * x / 0.05).exp();
+        let x = i as f32 / (NUM_NODES - 1) as f32 - 0.4;
+        let v = (-x * x / 0.02).exp();
         a[i] = v;
         b[i] = v;
     }
     let dt = 0.01;
     let dt2 = dt * dt;
-    let mut window = Canvas::new(512, 512);
-    for _ in 0..1000 {
+    let mut frame = 0;
+    loop {
         let mut matrix = [[0.0; NUM_NODES]; NUM_NODES];
         let mut vector = [0.0; NUM_NODES];
         for test_fn in 0..NUM_NODES {
@@ -115,16 +117,13 @@ fn main2() {
                 let shape_fn_center = shape_fn as f32;
                 matrix[test_fn][shape_fn] +=
                     int_two_shape_fns(test_fn_center, shape_fn_center) / dt2;
-                matrix[test_fn][shape_fn] -= int_two_shape_fn_d1s(test_fn_center, shape_fn_center);
+                matrix[test_fn][shape_fn] += int_two_shape_fn_d1s(test_fn_center, shape_fn_center);
                 vector[test_fn] +=
-                    a[shape_fn] * 2.0 / dt2 * int_two_shape_fns(test_fn_center, shape_fn_center);
+                    b[shape_fn] * 2.0 / dt2 * int_two_shape_fns(test_fn_center, shape_fn_center);
                 vector[test_fn] -=
-                    b[shape_fn] / dt2 * int_two_shape_fns(test_fn_center, shape_fn_center);
+                    a[shape_fn] / dt2 * int_two_shape_fns(test_fn_center, shape_fn_center);
             }
         }
-
-        println!("{:#?}", matrix);
-        println!("{:#?}", vector);
 
         let mut smat = TriMat::new((NUM_NODES, NUM_NODES));
         for row in 0..NUM_NODES {
@@ -139,20 +138,24 @@ fn main2() {
         let solver = Ldl::new().numeric(smat.view()).unwrap();
         let vector = solver.solve(&vector[..]);
 
-        window.clear(0.0);
-        let mut nodes = Vec::new();
-        for i in 0..NUM_NODES {
-            let x = i as f32 / (NUM_NODES - 1) as f32;
-            let y = b[i].map_range(-1.0..1.0, 1.0..0.0);
-            nodes.push(Vec2::new(x, y));
+        if frame % 5000 == 0 {
+            window.clear(0.0);
+            let mut nodes = Vec::new();
+            for i in 0..NUM_NODES {
+                let x = i as f32 / (NUM_NODES - 1) as f32;
+                let y = b[i].map_range(-1.0..1.0, 1.0..0.0);
+                nodes.push(Vec2::new(x, y));
+            }
+            window.draw_path(&nodes, 1.0);
+            window.show();
         }
-        window.draw_path(&nodes, 1.0);
-        window.show();
+        frame += 1;
+
         a = b;
         b = vector.try_into().unwrap();
-        window.wait_until_click();
+        b[0] = 0.0;
+        b[NUM_NODES - 1] = 0.0;
     }
-    window.wait_until_click();
 }
 
 fn main() {
