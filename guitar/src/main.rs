@@ -124,7 +124,7 @@ fn int_two_hermite_polys(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
         [9.0 / 35.0, 13.0 / 105.0, 26.0 / 35.0, -22.0 / 105.0],
         [-13.0 / 105.0, -2.0 / 35.0, -22.0 / 105.0, 8.0 / 105.0],
     ];
-    RESULTS[poly_type_1][poly_type_2]
+    0.5 * RESULTS[poly_type_1][poly_type_2]
 }
 
 fn int_two_hermite_poly_d1s(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
@@ -140,22 +140,34 @@ fn int_two_hermite_poly_d1s(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
 fn main2() {
     let mut window = Canvas::new(512, 512);
 
-    const NUM_NODES: usize = 201;
+    const NUM_NODES: usize = 101;
     const NUM_PARAMS: usize = NUM_NODES * 2;
     let mut a = [0.0; NUM_PARAMS];
-    let mut b = [0.0; NUM_PARAMS];
     for i in 0..NUM_NODES {
         let x = i as FLOAT / (NUM_NODES - 1) as FLOAT - 0.5;
         let v = (-x * x / 0.05).exp();
-        let d = -40.0 * x * (-x * x / 0.05).exp();
+        let d = -40.0 * x * (-x * x / 0.05).exp() / (NUM_NODES as FLOAT);
         a[i * 2] = v;
         a[i * 2 + 1] = d;
-        b[i * 2] = v;
-        b[i * 2 + 1] = d;
     }
-    let dt = 1.0;
+    let mut b = a.clone();
+    let mut c = a.clone();
+    let dt = 0.1;
     let dt2 = dt * dt;
     let mut frame = 0;
+
+    // window.draw_graph(Vec2::ZERO, Vec2::ONE, 1.0, |x| {
+    //     let x = x as FLOAT;
+    //     let x = x.map_range(0.0..1.0, -1.0..1.0);
+    //     let i = 0;
+    //     let y1 = a[i] * 0.25 * (2.0 - 3.0 * x + x.powi(3));
+    //     let y2 = a[i + 1] * 0.25 * (1.0 - x - x.powi(2) + x.powi(3));
+    //     let y3 = a[i + 2] * 0.25 * (2.0 + 3.0 * x - x.powi(3));
+    //     let y4 = a[i + 3] * 0.25 * (-1.0 - x + x.powi(2) + x.powi(3));
+    //     (y1 + y2 + y3 + y4) as f32
+    // });
+    // window.show();
+    // window.wait_until_click();
 
     let mut matrix = [[0.0; NUM_PARAMS]; NUM_PARAMS];
     for element in 0..NUM_NODES - 1 {
@@ -164,10 +176,12 @@ fn main2() {
             let shape_fn_node = element * 2 + shape_fn_kind;
             matrix[test_fn_node][shape_fn_node] +=
                 int_two_hermite_polys(test_fn_kind, shape_fn_kind) / dt2;
-            matrix[test_fn_node][shape_fn_node] +=
-                int_two_hermite_poly_d1s(test_fn_kind, shape_fn_kind);
+            // matrix[test_fn_node][shape_fn_node] +=
+            //     int_two_hermite_poly_d1s(test_fn_kind, shape_fn_kind);
         }
     }
+    // println!("{:#?}", matrix);
+    // return;
     // for index in 0..NUM_PARAMS {
     //     for p in 0..1 {
     //         matrix[p][index] = 0.0;
@@ -199,10 +213,12 @@ fn main2() {
             for (test_fn_kind, shape_fn_kind) in (0..4).cartesian_product(0..4) {
                 let test_fn_node = element * 2 + test_fn_kind;
                 let shape_fn_node = element * 2 + shape_fn_kind;
-                vector[test_fn_node] += b[shape_fn_node] * 2.0 / dt2
+                vector[test_fn_node] += c[shape_fn_node] * 2.0 / dt2
+                    * int_two_hermite_polys(test_fn_kind, shape_fn_kind);
+                vector[test_fn_node] -= b[shape_fn_node] * 1.0 / dt2
                     * int_two_hermite_polys(test_fn_kind, shape_fn_kind);
                 vector[test_fn_node] -=
-                    a[shape_fn_node] / dt2 * int_two_hermite_polys(test_fn_kind, shape_fn_kind);
+                    c[shape_fn_node] * int_two_hermite_poly_d1s(test_fn_kind, shape_fn_kind);
             }
         }
         // for p in 0..1 {
@@ -211,23 +227,26 @@ fn main2() {
         // }
 
         let vector = solver.solve(&vector[..]);
+        // println!("{:.4?}", c);
+        // println!("{:.4?}", vector);
 
-        if frame % 1000 == 0 {
+        if frame % 1_000 == 0 {
             println!("frame {}", frame);
             window.clear(0.0);
             let mut nodes = Vec::new();
             for i in 0..NUM_NODES {
                 let x = i as f32 / (NUM_NODES - 1) as f32;
-                let y = b[i * 2].map_range(-1.0..1.0, 1.0..0.0) as f32;
+                let y = c[i * 2].map_range(-1.0..1.0, 1.0..0.0) as f32;
                 nodes.push(Vec2::new(x, y));
             }
             window.draw_path(&nodes, 1.0);
             window.show();
+            // window.wait_until_click();
         }
         frame += 1;
 
-        a = b;
-        b = vector.try_into().unwrap();
+        b = c;
+        c = vector.try_into().unwrap();
     }
 }
 
@@ -272,8 +291,264 @@ fn main3() {
     }
 }
 
+struct LabeledShapeFn {
+    x_kind: usize,
+    y_kind: usize,
+    node_offset: usize,
+}
+
+const fn lsf(x_kind: usize, y_kind: usize, node_offset: usize) -> LabeledShapeFn {
+    LabeledShapeFn {
+        x_kind,
+        y_kind,
+        node_offset,
+    }
+}
+
+fn compute_plate_matrix() {
+    const SIZE: usize = 8;
+    const NUM_PARAMS: usize = SIZE * SIZE * 3;
+    let dt = 0.1;
+    let dt2 = dt * dt;
+
+    const FUNCTIONS: [LabeledShapeFn; 12] = [
+        lsf(0, 0, 0),
+        lsf(1, 0, 1),
+        lsf(0, 1, 2),
+        lsf(2, 0, 3),
+        lsf(3, 0, 4),
+        lsf(2, 1, 5),
+        lsf(0, 2, SIZE * 3),
+        lsf(1, 2, SIZE * 3 + 1),
+        lsf(0, 3, SIZE * 3 + 2),
+        lsf(2, 2, SIZE * 3 + 3),
+        lsf(3, 2, SIZE * 3 + 4),
+        lsf(2, 3, SIZE * 3 + 5),
+    ];
+
+    let mut matrix = vec![0.0; NUM_PARAMS * NUM_PARAMS];
+    for (ely, elx) in (0..SIZE - 1).cartesian_product(0..SIZE - 1) {
+        let index = (ely * SIZE + elx) * 3;
+        for (test_fn, shape_fn) in (FUNCTIONS.iter()).cartesian_product(FUNCTIONS.iter()) {
+            let test_fn_node = index + test_fn.node_offset;
+            let shape_fn_node = index + shape_fn.node_offset;
+            matrix[test_fn_node * NUM_PARAMS + shape_fn_node] +=
+                int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind)
+                    / dt2;
+            // matrix[test_fn_node][shape_fn_node] +=
+            //     int_two_hermite_poly_d1s(test_fn_kind, shape_fn_kind);
+        }
+    }
+    fn param_index(x: usize, y: usize, param: usize) -> usize {
+        (y * SIZE + x) * 3 + param
+    }
+    fn matrix_index(test_param: usize, shape_param: usize) -> usize {
+        test_param * NUM_PARAMS + shape_param
+    }
+    for node_pos in 0..SIZE {
+        let param_a = param_index(node_pos, 0, 0);
+        let param_b = param_index(0, node_pos, 0);
+        let param_c = param_index(node_pos, SIZE - 1, 0);
+        let param_d = param_index(SIZE - 1, node_pos, 0);
+        for param in [param_a, param_b, param_c, param_d] {
+            for other_param in 0..NUM_PARAMS {
+                matrix[matrix_index(param, other_param)] = 0.0;
+                matrix[matrix_index(other_param, param)] = 0.0;
+                matrix[matrix_index(param, param)] = 1.0;
+            }
+        }
+    }
+    let mut smat = TriMat::new((NUM_PARAMS, NUM_PARAMS));
+    for row in 0..NUM_PARAMS {
+        for col in 0..NUM_PARAMS {
+            let val = matrix[row * NUM_PARAMS + col];
+            if val != 0.0 {
+                smat.add_triplet(row, col, val);
+            }
+        }
+    }
+    let smat = smat.to_csc::<usize>();
+    let solver = Ldl::new().numeric(smat.view()).unwrap();
+
+    let mut inv_image = Canvas::new(NUM_PARAMS, NUM_PARAMS);
+
+    for param_index in 0..NUM_PARAMS {
+        let mut vector = [0.0; NUM_PARAMS];
+        vector[param_index] = 1.0;
+        let vector = solver.solve(&vector[..]);
+        for x in 0..NUM_PARAMS {
+            inv_image.set_pixel(x, param_index, vector[x] as f32);
+        }
+    }
+
+    inv_image.upscale_nearest(800 / inv_image.width());
+    inv_image.show();
+    inv_image.wait_until_click();
+}
+
+fn main4() {
+    let mut window = Canvas::new(512, 512);
+
+    const SIZE: usize = 30;
+    const NUM_PARAMS: usize = SIZE * SIZE * 3;
+    let mut a = vec![0.0; NUM_PARAMS];
+    let transient_size = 0.03;
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let i = y * SIZE + x;
+            let x = x as FLOAT / (SIZE - 1) as FLOAT - 0.2;
+            let y = y as FLOAT / (SIZE - 1) as FLOAT - 0.5;
+            let xv = (-x * x / transient_size).exp();
+            let yv = (-y * y / transient_size).exp();
+            let xd =
+                -(1.0 / transient_size) * x * (-x * x / transient_size).exp() / (SIZE as FLOAT);
+            let yd =
+                -(1.0 / transient_size) * y * (-y * y / transient_size).exp() / (SIZE as FLOAT);
+            a[i * 3] = xv * yv;
+            a[i * 3 + 1] = xd * yv;
+            a[i * 3 + 2] = xv * yd;
+        }
+    }
+    let mut b = a.clone();
+    let dt = 0.1;
+    let dt2 = dt * dt;
+    let mut frame = 0;
+
+    // window.draw_graph(Vec2::ZERO, Vec2::ONE, 1.0, |x| {
+    //     let x = x as FLOAT;
+    //     let x = x.map_range(0.0..1.0, -1.0..1.0);
+    //     let i = 0;
+    //     let y1 = a[i] * 0.25 * (2.0 - 3.0 * x + x.powi(3));
+    //     let y2 = a[i + 1] * 0.25 * (1.0 - x - x.powi(2) + x.powi(3));
+    //     let y3 = a[i + 2] * 0.25 * (2.0 + 3.0 * x - x.powi(3));
+    //     let y4 = a[i + 3] * 0.25 * (-1.0 - x + x.powi(2) + x.powi(3));
+    //     (y1 + y2 + y3 + y4) as f32
+    // });
+    // window.show();
+    // window.wait_until_click();
+
+    const FUNCTIONS: [LabeledShapeFn; 12] = [
+        lsf(0, 0, 0),
+        lsf(1, 0, 1),
+        lsf(0, 1, 2),
+        lsf(2, 0, 3),
+        lsf(3, 0, 4),
+        lsf(2, 1, 5),
+        lsf(0, 2, SIZE * 3),
+        lsf(1, 2, SIZE * 3 + 1),
+        lsf(0, 3, SIZE * 3 + 2),
+        lsf(2, 2, SIZE * 3 + 3),
+        lsf(3, 2, SIZE * 3 + 4),
+        lsf(2, 3, SIZE * 3 + 5),
+    ];
+
+    let mut matrix = vec![0.0; NUM_PARAMS * NUM_PARAMS];
+    for (ely, elx) in (0..SIZE - 1).cartesian_product(0..SIZE - 1) {
+        let index = (ely * SIZE + elx) * 3;
+        for (test_fn, shape_fn) in (FUNCTIONS.iter()).cartesian_product(FUNCTIONS.iter()) {
+            let test_fn_node = index + test_fn.node_offset;
+            let shape_fn_node = index + shape_fn.node_offset;
+            matrix[test_fn_node * NUM_PARAMS + shape_fn_node] +=
+                int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind)
+                    / dt2;
+            // matrix[test_fn_node][shape_fn_node] +=
+            //     int_two_hermite_poly_d1s(test_fn_kind, shape_fn_kind);
+        }
+    }
+    fn param_index(x: usize, y: usize, param: usize) -> usize {
+        (y * SIZE + x) * 3 + param
+    }
+    fn matrix_index(test_param: usize, shape_param: usize) -> usize {
+        test_param * NUM_PARAMS + shape_param
+    }
+    for node_pos in 0..SIZE {
+        let param_a = param_index(node_pos, 0, 0);
+        let param_b = param_index(0, node_pos, 0);
+        let param_c = param_index(node_pos, SIZE - 1, 0);
+        let param_d = param_index(SIZE - 1, node_pos, 0);
+        for param in [param_a, param_b, param_c, param_d] {
+            for other_param in 0..NUM_PARAMS {
+                matrix[matrix_index(param, other_param)] = 0.0;
+                matrix[matrix_index(other_param, param)] = 0.0;
+                matrix[matrix_index(param, param)] = 1.0;
+            }
+        }
+    }
+    // println!("{:#?}", matrix);
+    // return;
+    let mut smat = TriMat::new((NUM_PARAMS, NUM_PARAMS));
+    for row in 0..NUM_PARAMS {
+        for col in 0..NUM_PARAMS {
+            let val = matrix[row * NUM_PARAMS + col];
+            if val != 0.0 {
+                smat.add_triplet(row, col, val);
+            }
+        }
+    }
+    let smat = smat.to_csc::<usize>();
+    let solver = Ldl::new().numeric(smat.view()).unwrap();
+    let mut audio = Vec::new();
+
+    for _ in 0..100_000 {
+        let mut vector = [0.0; NUM_PARAMS];
+        for (ely, elx) in (0..SIZE - 1).cartesian_product(0..SIZE - 1) {
+            let index = (ely * SIZE + elx) * 3;
+            for (test_fn, shape_fn) in (FUNCTIONS.iter()).cartesian_product(FUNCTIONS.iter()) {
+                let test_fn_node = index + test_fn.node_offset;
+                let shape_fn_node = index + shape_fn.node_offset;
+                vector[test_fn_node] += b[shape_fn_node] * 2.0 / dt2
+                    * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind);
+                vector[test_fn_node] -= a[shape_fn_node] * 1.0 / dt2
+                    * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind);
+                vector[test_fn_node] -= b[shape_fn_node]
+                    * int_two_hermite_poly_d1s(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_poly_d1s(test_fn.y_kind, shape_fn.y_kind);
+            }
+        }
+        for node_pos in 0..SIZE {
+            for index in [
+                param_index(node_pos, 0, 0),
+                param_index(0, node_pos, 0),
+                param_index(node_pos, SIZE - 1, 0),
+                param_index(SIZE - 1, node_pos, 0),
+            ] {
+                vector[index] = 0.0;
+            }
+        }
+
+        let vector = solver.solve(&vector[..]);
+        // println!("{:.4?}", c);
+        // println!("{:.4?}", vector);
+
+        if frame % 100 == 0 {
+            println!("frame {}", frame);
+            window.clear(0.0);
+            window.shade(|pos| {
+                let x = (pos.x * 0.999 * SIZE as f32) as usize;
+                let y = (pos.y * 0.999 * SIZE as f32) as usize;
+                b[(y * SIZE + x) * 3] as f32
+            });
+            window.show();
+            // window.wait_until_click();
+        }
+        frame += 1;
+
+        a = b;
+        b = vector.try_into().unwrap();
+
+        audio.push(b[param_index(SIZE / 2, SIZE / 4, 0)]);
+    }
+
+    save_audio_to_file(&audio);
+}
+
 fn main() {
-    main2();
+    // compute_plate_matrix();
+    main4();
     return;
 
     let mut string = GuitarString::new();
