@@ -16,7 +16,10 @@ use sprs::{CsMat, TriMat};
 use sprs_ldl::Ldl;
 use wav::{BitDepth, Header};
 
-use crate::constants::DELTA_TIME;
+use crate::constants::{
+    BOARD_ALPHA, BOARD_DENSITY, BOARD_DISSIPATIVE_TERM, BOARD_EL_SIZE, BOARD_PARAMS, BOARD_RES,
+    BOARD_RIGIDITY, BOARD_SIZE, DELTA_TIME,
+};
 
 fn save_audio_to_file(data: &[f64]) {
     let max = data.iter().fold(0.0f64, |a, &b| a.max(b.abs()));
@@ -123,13 +126,36 @@ fn int_two_shape_fn_d1s(center1: FLOAT, center2: FLOAT) -> FLOAT {
 }
 
 fn int_two_hermite_polys(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
+    const L1: FLOAT = BOARD_EL_SIZE;
+    const L2: FLOAT = L1 * L1;
+    const L3: FLOAT = L2 * L1;
     const RESULTS: [[FLOAT; 4]; 4] = [
-        [26.0 / 35.0, 22.0 / 105.0, 9.0 / 35.0, -13.0 / 105.0],
-        [22.0 / 105.0, 8.0 / 105.0, 13.0 / 105.0, -2.0 / 35.0],
-        [9.0 / 35.0, 13.0 / 105.0, 26.0 / 35.0, -22.0 / 105.0],
-        [-13.0 / 105.0, -2.0 / 35.0, -22.0 / 105.0, 8.0 / 105.0],
+        [
+            L1 * 13.0 / 35.0,
+            L2 * 11.0 / 105.0,
+            L1 * 9.0 / 70.0,
+            L2 * -13.0 / 210.0,
+        ],
+        [
+            L2 * 11.0 / 105.0,
+            L3 * 4.0 / 105.0,
+            L2 * 13.0 / 210.0,
+            L3 * -1.0 / 35.0,
+        ],
+        [
+            L1 * 9.0 / 70.0,
+            L2 * 13.0 / 210.0,
+            L1 * 13.0 / 35.0,
+            L2 * -11.0 / 105.0,
+        ],
+        [
+            L2 * -13.0 / 210.0,
+            L3 * -1.0 / 35.0,
+            L2 * -11.0 / 105.0,
+            L3 * 4.0 / 105.0,
+        ],
     ];
-    0.5 * RESULTS[poly_type_1][poly_type_2]
+    RESULTS[poly_type_1][poly_type_2]
 }
 
 fn int_two_hermite_poly_d1s(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
@@ -139,27 +165,64 @@ fn int_two_hermite_poly_d1s(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
         [-3.0 / 5.0, -1.0 / 10.0, 3.0 / 5.0, -1.0 / 10.0],
         [1.0 / 10.0, -1.0 / 15.0, -1.0 / 10.0, 4.0 / 15.0],
     ];
-    2.0 * RESULTS[poly_type_1][poly_type_2]
+    todo!("Old table")
 }
 
 fn int_two_hermite_poly_d2s(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
+    const L1: FLOAT = BOARD_EL_SIZE;
+    const L2: FLOAT = L1 * L1;
+    const L3: FLOAT = L2 * L1;
+    const L4: FLOAT = L3 * L1;
     const RESULTS: [[FLOAT; 4]; 4] = [
-        [1.5, 1.5, -1.5, 1.5],
-        [1.5, 2.0, -1.5, 1.0],
-        [-1.5, -1.5, 1.5, -1.5],
-        [1.5, 1.0, -1.5, 2.0],
+        [
+            L1 * 3.0 / 4.0,
+            L2 * 3.0 / 4.0,
+            L1 * -3.0 / 4.0,
+            L2 * 3.0 / 4.0,
+        ],
+        [L2 * 3.0 / 4.0, L3 * 1.0, L2 * -3.0 / 4.0, L3 * 1.0 / 2.0],
+        [
+            L1 * -3.0 / 4.0,
+            L2 * -3.0 / 4.0,
+            L1 * 3.0 / 4.0,
+            L2 * -3.0 / 4.0,
+        ],
+        [L2 * 3.0 / 4.0, L3 * 1.0 / 2.0, L2 * -3.0 / 4.0, L3 * 1.0],
     ];
-    8.0 * RESULTS[poly_type_1][poly_type_2]
+    RESULTS[poly_type_1][poly_type_2] * 16.0 / L4
 }
 
 fn int_hermite_poly_and_d2(normal_poly_type: usize, d2_poly_type: usize) -> FLOAT {
+    const L1: FLOAT = BOARD_EL_SIZE;
+    const L2: FLOAT = L1 * L1;
+    const L3: FLOAT = L2 * L1;
     const RESULTS: [[FLOAT; 4]; 4] = [
-        [-3.0 / 5.0, -11.0 / 10.0, 3.0 / 5.0, -1.0 / 10.0],
-        [-1.0 / 10.0, -4.0 / 15.0, 1.0 / 10.0, 1.0 / 15.0],
-        [3.0 / 5.0, 1.0 / 10.0, -3.0 / 5.0, 11.0 / 10.0],
-        [-1.0 / 10.0, 1.0 / 15.0, 1.0 / 10.0, -4.0 / 15.0],
+        [
+            L1 * -3.0 / 10.0,
+            L2 * -11.0 / 20.0,
+            L1 * 3.0 / 10.0,
+            L2 * -1.0 / 20.0,
+        ],
+        [
+            L2 * -1.0 / 20.0,
+            L3 * -2.0 / 15.0,
+            L2 * 1.0 / 20.0,
+            L3 * 1.0 / 30.0,
+        ],
+        [
+            L1 * 3.0 / 10.0,
+            L2 * 1.0 / 20.0,
+            L1 * -3.0 / 10.0,
+            L2 * 11.0 / 20.0,
+        ],
+        [
+            L2 * -1.0 / 20.0,
+            L3 * 1.0 / 30.0,
+            L2 * 1.0 / 20.0,
+            L3 * -2.0 / 15.0,
+        ],
     ];
-    2.0 * RESULTS[normal_poly_type][d2_poly_type]
+    RESULTS[normal_poly_type][d2_poly_type] * 4.0 / L2
 }
 
 fn main2() {
@@ -574,35 +637,31 @@ fn main4() {
 fn main5() {
     let mut window = Canvas::new(512, 512);
 
-    const SIZE: usize = 50;
-    const NUM_PARAMS: usize = SIZE * SIZE * 3;
-    let mut a = vec![0.0; NUM_PARAMS];
-    let transient_size = 0.001;
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let i = y * SIZE + x;
-            let x = x as FLOAT / (SIZE - 1) as FLOAT - 0.5;
-            let y = y as FLOAT / (SIZE - 1) as FLOAT - 0.5;
+    let mut a = vec![0.0; BOARD_PARAMS];
+    let transient_size = (BOARD_SIZE / 15.0).powi(2);
+    let transient_height = 1.00;
+    for y in 0..BOARD_RES {
+        for x in 0..BOARD_RES {
+            let i = y * BOARD_RES + x;
+            let x = x as FLOAT * BOARD_EL_SIZE - BOARD_SIZE / 2.0;
+            let y = y as FLOAT * BOARD_EL_SIZE - BOARD_SIZE / 2.0;
             // Transient hit, should result in complicated pattern of harmonics.
             let xv = (-x * x / transient_size).exp();
             let yv = (-y * y / transient_size).exp();
-            let xd =
-                -(1.0 / transient_size) * x * (-x * x / transient_size).exp() / (SIZE as FLOAT);
-            let yd =
-                -(1.0 / transient_size) * y * (-y * y / transient_size).exp() / (SIZE as FLOAT);
+            let xd = -(1.0 / transient_size) * x * (-x * x / transient_size).exp();
+            let yd = -(1.0 / transient_size) * y * (-y * y / transient_size).exp();
             // Single mode IC, should oscillate in this pattern forever.
             // let xv = (x * PI).cos();
             // let yv = (y * PI).cos();
             // let xd = -(x * PI).sin() * PI / (SIZE as FLOAT);
             // let yd = -(y * PI).sin() * PI / (SIZE as FLOAT);
-            a[i * 3] = xv * yv;
-            a[i * 3 + 1] = xd * yv;
-            a[i * 3 + 2] = xv * yd;
+            a[i * 3] = xv * yv * transient_height;
+            a[i * 3 + 1] = xd * yv * transient_height;
+            a[i * 3 + 2] = xv * yd * transient_height;
         }
     }
     let mut b = a.clone();
-    let dt = 0.03;
-    let dt2 = dt * dt;
+    let dt2 = DELTA_TIME * DELTA_TIME;
     let mut frame = 0;
 
     const FUNCTIONS: [LabeledShapeFn; 12] = [
@@ -612,48 +671,40 @@ fn main5() {
         lsf(2, 0, 3),
         lsf(3, 0, 4),
         lsf(2, 1, 5),
-        lsf(0, 2, SIZE * 3),
-        lsf(1, 2, SIZE * 3 + 1),
-        lsf(0, 3, SIZE * 3 + 2),
-        lsf(2, 2, SIZE * 3 + 3),
-        lsf(3, 2, SIZE * 3 + 4),
-        lsf(2, 3, SIZE * 3 + 5),
+        lsf(0, 2, BOARD_RES * 3),
+        lsf(1, 2, BOARD_RES * 3 + 1),
+        lsf(0, 3, BOARD_RES * 3 + 2),
+        lsf(2, 2, BOARD_RES * 3 + 3),
+        lsf(3, 2, BOARD_RES * 3 + 4),
+        lsf(2, 3, BOARD_RES * 3 + 5),
     ];
 
-    let mut matrix = vec![0.0; NUM_PARAMS * NUM_PARAMS];
-    for (ely, elx) in (0..SIZE - 1).cartesian_product(0..SIZE - 1) {
+    let mut matrix = vec![0.0; BOARD_PARAMS * BOARD_PARAMS];
+    for (ely, elx) in (0..BOARD_RES - 1).cartesian_product(0..BOARD_RES - 1) {
         let index = param_index(ely, elx, 0);
         for (test_fn, shape_fn) in (FUNCTIONS.iter()).cartesian_product(FUNCTIONS.iter()) {
             let test_fn_node = index + test_fn.node_offset;
             let shape_fn_node = index + shape_fn.node_offset;
-            matrix[matrix_index(test_fn_node, shape_fn_node)] +=
-                int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
-                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind)
-                    / dt2;
-            // matrix[matrix_index(test_fn_node, shape_fn_node)] +=
-            //     (int_two_hermite_poly_d2s(test_fn.x_kind, shape_fn.x_kind)
-            //         * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind))
-            //         + (int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
-            //             * int_two_hermite_poly_d2s(test_fn.y_kind, shape_fn.y_kind))
-            //         + ((int_hermite_poly_and_d2(shape_fn.x_kind, test_fn.x_kind)
-            //             * int_hermite_poly_and_d2(test_fn.y_kind, shape_fn.y_kind))
-            //             + (int_hermite_poly_and_d2(test_fn.x_kind, shape_fn.x_kind)
-            //                 * int_hermite_poly_and_d2(shape_fn.y_kind, test_fn.y_kind)));
+            matrix[matrix_index(test_fn_node, shape_fn_node)] += BOARD_ALPHA
+                * BOARD_DENSITY
+                * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind)
+                / dt2;
         }
     }
     fn param_index(x: usize, y: usize, param: usize) -> usize {
-        (y * SIZE + x) * 3 + param
+        (y * BOARD_RES + x) * 3 + param
     }
     fn matrix_index(test_param: usize, shape_param: usize) -> usize {
-        test_param * NUM_PARAMS + shape_param
+        test_param * BOARD_PARAMS + shape_param
     }
-    for node_pos in 0..SIZE {
+    for node_pos in 0..BOARD_RES {
         let param_a = param_index(node_pos, 0, 0);
         let param_b = param_index(0, node_pos, 0);
-        let param_c = param_index(node_pos, SIZE - 1, 0);
-        let param_d = param_index(SIZE - 1, node_pos, 0);
+        let param_c = param_index(node_pos, BOARD_RES - 1, 0);
+        let param_d = param_index(BOARD_RES - 1, node_pos, 0);
         for param in [param_a, param_b, param_c, param_d] {
-            for other_param in 0..NUM_PARAMS {
+            for other_param in 0..BOARD_PARAMS {
                 matrix[matrix_index(param, other_param)] = 0.0;
                 matrix[matrix_index(other_param, param)] = 0.0;
                 matrix[matrix_index(param, param)] = 1.0;
@@ -662,10 +713,10 @@ fn main5() {
     }
     // println!("{:#?}", matrix);
     // return;
-    let mut smat = TriMat::new((NUM_PARAMS, NUM_PARAMS));
-    for row in 0..NUM_PARAMS {
-        for col in 0..NUM_PARAMS {
-            let val = matrix[row * NUM_PARAMS + col];
+    let mut smat = TriMat::new((BOARD_PARAMS, BOARD_PARAMS));
+    for row in 0..BOARD_PARAMS {
+        for col in 0..BOARD_PARAMS {
+            let val = matrix[row * BOARD_PARAMS + col];
             if val != 0.0 {
                 smat.add_triplet(row, col, val);
             }
@@ -675,27 +726,22 @@ fn main5() {
     let solver = Ldl::new().numeric(smat.view()).unwrap();
     let mut audio = Vec::new();
 
+    const RESISTANCE: FLOAT = BOARD_RIGIDITY * BOARD_ALPHA * BOARD_ALPHA * BOARD_ALPHA;
+
     loop {
-        let mut vector = [0.0; NUM_PARAMS];
-        for (ely, elx) in (0..SIZE - 1).cartesian_product(0..SIZE - 1) {
+        let mut vector = [0.0; BOARD_PARAMS];
+        for (ely, elx) in (0..BOARD_RES - 1).cartesian_product(0..BOARD_RES - 1) {
             let index = param_index(ely, elx, 0);
             for (test_fn, shape_fn) in (FUNCTIONS.iter()).cartesian_product(FUNCTIONS.iter()) {
                 let test_fn_node = index + test_fn.node_offset;
                 let shape_fn_node = index + shape_fn.node_offset;
-                vector[test_fn_node] += b[shape_fn_node] * 2.0 / dt2
+                vector[test_fn_node] += b[shape_fn_node] * 2.0 * BOARD_ALPHA * BOARD_DENSITY / dt2
                     * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
                     * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind);
-                vector[test_fn_node] -= a[shape_fn_node] * 1.0 / dt2
+                vector[test_fn_node] -= a[shape_fn_node] * 1.0 * BOARD_ALPHA * BOARD_DENSITY / dt2
                     * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
                     * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind);
-                // Basic wave equation
-                // vector[test_fn_node] -= b[shape_fn_node]
-                //     * int_two_hermite_poly_d1s(test_fn.x_kind, shape_fn.x_kind)
-                //     * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind);
-                // vector[test_fn_node] -= b[shape_fn_node]
-                //     * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
-                //     * int_two_hermite_poly_d1s(test_fn.y_kind, shape_fn.y_kind);
-                // Kirchhoff-Love plate equation
+                // Kirchhoff-Love plate equation with dissipation
                 let fac = (int_two_hermite_poly_d2s(test_fn.x_kind, shape_fn.x_kind)
                     * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind))
                     + (int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
@@ -704,16 +750,18 @@ fn main5() {
                         * int_hermite_poly_and_d2(test_fn.y_kind, shape_fn.y_kind))
                         + (int_hermite_poly_and_d2(test_fn.x_kind, shape_fn.x_kind)
                             * int_hermite_poly_and_d2(shape_fn.y_kind, test_fn.y_kind)));
+                let fac = RESISTANCE * fac;
                 vector[test_fn_node] -= b[shape_fn_node] * fac;
-                vector[test_fn_node] -= (b[shape_fn_node] - a[shape_fn_node]) * fac / dt * 1e-3;
+                vector[test_fn_node] -= (b[shape_fn_node] - a[shape_fn_node]) * fac / DELTA_TIME
+                    * BOARD_DISSIPATIVE_TERM;
             }
         }
-        for node_pos in 0..SIZE {
+        for node_pos in 0..BOARD_RES {
             for index in [
                 param_index(node_pos, 0, 0),
                 param_index(0, node_pos, 0),
-                param_index(node_pos, SIZE - 1, 0),
-                param_index(SIZE - 1, node_pos, 0),
+                param_index(node_pos, BOARD_RES - 1, 0),
+                param_index(BOARD_RES - 1, node_pos, 0),
             ] {
                 vector[index] = 0.0;
             }
@@ -724,15 +772,14 @@ fn main5() {
         // println!("{:.4?}", vector);
 
         if frame % 100 == 0 {
-            println!("frame {}", frame);
+            println!("{:.2}ms", frame as FLOAT * DELTA_TIME * 1000.0);
             window.clear(0.0);
             window.shade(|pos| {
-                let x = (pos.x * 0.999 * SIZE as f32) as usize;
-                let y = (pos.y * 0.999 * SIZE as f32) as usize;
-                b[(y * SIZE + x) * 3] as f32
+                let x = (pos.x * 0.999 * BOARD_RES as f32) as usize;
+                let y = (pos.y * 0.999 * BOARD_RES as f32) as usize;
+                b[(y * BOARD_RES + x) * 3] as f32
             });
             window.show();
-            // window.wait_until_click();
         }
         if frame % 1000 == 999 {
             save_audio_to_file(&audio);
@@ -742,7 +789,7 @@ fn main5() {
         a = b;
         b = vector.try_into().unwrap();
 
-        audio.push(b[param_index(SIZE / 2, SIZE / 4, 0)]);
+        audio.push(b[param_index(BOARD_RES / 2, BOARD_RES / 4, 0)]);
     }
 
     save_audio_to_file(&audio);
