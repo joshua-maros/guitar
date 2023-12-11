@@ -1,7 +1,12 @@
 mod constants;
 mod guitar_string;
 
-use std::{f32::consts::TAU, f64::consts::PI, fs::File};
+use std::{
+    f32::consts::TAU,
+    f64::consts::PI,
+    fs::File,
+    time::{Duration, Instant},
+};
 
 use constants::{MAX_SIMULATION_TIME, SCREEN_REFRESH_INTERVAL};
 use guitar_string::GuitarString;
@@ -14,7 +19,7 @@ use wav::{BitDepth, Header};
 use crate::constants::DELTA_TIME;
 
 fn save_audio_to_file(data: &[f64]) {
-    let max = data.iter().fold(0.0f64, |a, &b| a.max(b));
+    let max = data.iter().fold(0.0f64, |a, &b| a.max(b.abs()));
     let normalized = data.iter().map(|&x| (x / max) as f32).collect_vec();
 
     let rate = 1.0 / DELTA_TIME;
@@ -134,7 +139,27 @@ fn int_two_hermite_poly_d1s(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
         [-3.0 / 5.0, -1.0 / 10.0, 3.0 / 5.0, -1.0 / 10.0],
         [1.0 / 10.0, -1.0 / 15.0, -1.0 / 10.0, 4.0 / 15.0],
     ];
-    RESULTS[poly_type_1][poly_type_2]
+    2.0 * RESULTS[poly_type_1][poly_type_2]
+}
+
+fn int_two_hermite_poly_d2s(poly_type_1: usize, poly_type_2: usize) -> FLOAT {
+    const RESULTS: [[FLOAT; 4]; 4] = [
+        [1.5, 1.5, -1.5, 1.5],
+        [1.5, 2.0, -1.5, 1.0],
+        [-1.5, -1.5, 1.5, -1.5],
+        [1.5, 1.0, -1.5, 2.0],
+    ];
+    8.0 * RESULTS[poly_type_1][poly_type_2]
+}
+
+fn int_hermite_poly_and_d2(normal_poly_type: usize, d2_poly_type: usize) -> FLOAT {
+    const RESULTS: [[FLOAT; 4]; 4] = [
+        [-3.0 / 5.0, -11.0 / 10.0, 3.0 / 5.0, -1.0 / 10.0],
+        [-1.0 / 10.0, -4.0 / 15.0, 1.0 / 10.0, 1.0 / 15.0],
+        [3.0 / 5.0, 1.0 / 10.0, -3.0 / 5.0, 11.0 / 10.0],
+        [-1.0 / 10.0, 1.0 / 15.0, 1.0 / 10.0, -4.0 / 15.0],
+    ];
+    2.0 * RESULTS[normal_poly_type][d2_poly_type]
 }
 
 fn main2() {
@@ -390,7 +415,7 @@ fn compute_plate_matrix() {
 fn main4() {
     let mut window = Canvas::new(512, 512);
 
-    const SIZE: usize = 30;
+    const SIZE: usize = 50;
     const NUM_PARAMS: usize = SIZE * SIZE * 3;
     let mut a = vec![0.0; NUM_PARAMS];
     let transient_size = 0.03;
@@ -411,7 +436,7 @@ fn main4() {
         }
     }
     let mut b = a.clone();
-    let dt = 0.1;
+    let dt = 0.01;
     let dt2 = dt * dt;
     let mut frame = 0;
 
@@ -546,9 +571,186 @@ fn main4() {
     save_audio_to_file(&audio);
 }
 
+fn main5() {
+    let mut window = Canvas::new(512, 512);
+
+    const SIZE: usize = 50;
+    const NUM_PARAMS: usize = SIZE * SIZE * 3;
+    let mut a = vec![0.0; NUM_PARAMS];
+    let transient_size = 0.001;
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let i = y * SIZE + x;
+            let x = x as FLOAT / (SIZE - 1) as FLOAT - 0.5;
+            let y = y as FLOAT / (SIZE - 1) as FLOAT - 0.5;
+            // Transient hit, should result in complicated pattern of harmonics.
+            let xv = (-x * x / transient_size).exp();
+            let yv = (-y * y / transient_size).exp();
+            let xd =
+                -(1.0 / transient_size) * x * (-x * x / transient_size).exp() / (SIZE as FLOAT);
+            let yd =
+                -(1.0 / transient_size) * y * (-y * y / transient_size).exp() / (SIZE as FLOAT);
+            // Single mode IC, should oscillate in this pattern forever.
+            // let xv = (x * PI).cos();
+            // let yv = (y * PI).cos();
+            // let xd = -(x * PI).sin() * PI / (SIZE as FLOAT);
+            // let yd = -(y * PI).sin() * PI / (SIZE as FLOAT);
+            a[i * 3] = xv * yv;
+            a[i * 3 + 1] = xd * yv;
+            a[i * 3 + 2] = xv * yd;
+        }
+    }
+    let mut b = a.clone();
+    let dt = 0.03;
+    let dt2 = dt * dt;
+    let mut frame = 0;
+
+    const FUNCTIONS: [LabeledShapeFn; 12] = [
+        lsf(0, 0, 0),
+        lsf(1, 0, 1),
+        lsf(0, 1, 2),
+        lsf(2, 0, 3),
+        lsf(3, 0, 4),
+        lsf(2, 1, 5),
+        lsf(0, 2, SIZE * 3),
+        lsf(1, 2, SIZE * 3 + 1),
+        lsf(0, 3, SIZE * 3 + 2),
+        lsf(2, 2, SIZE * 3 + 3),
+        lsf(3, 2, SIZE * 3 + 4),
+        lsf(2, 3, SIZE * 3 + 5),
+    ];
+
+    let mut matrix = vec![0.0; NUM_PARAMS * NUM_PARAMS];
+    for (ely, elx) in (0..SIZE - 1).cartesian_product(0..SIZE - 1) {
+        let index = param_index(ely, elx, 0);
+        for (test_fn, shape_fn) in (FUNCTIONS.iter()).cartesian_product(FUNCTIONS.iter()) {
+            let test_fn_node = index + test_fn.node_offset;
+            let shape_fn_node = index + shape_fn.node_offset;
+            matrix[matrix_index(test_fn_node, shape_fn_node)] +=
+                int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind)
+                    / dt2;
+            // matrix[matrix_index(test_fn_node, shape_fn_node)] +=
+            //     (int_two_hermite_poly_d2s(test_fn.x_kind, shape_fn.x_kind)
+            //         * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind))
+            //         + (int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+            //             * int_two_hermite_poly_d2s(test_fn.y_kind, shape_fn.y_kind))
+            //         + ((int_hermite_poly_and_d2(shape_fn.x_kind, test_fn.x_kind)
+            //             * int_hermite_poly_and_d2(test_fn.y_kind, shape_fn.y_kind))
+            //             + (int_hermite_poly_and_d2(test_fn.x_kind, shape_fn.x_kind)
+            //                 * int_hermite_poly_and_d2(shape_fn.y_kind, test_fn.y_kind)));
+        }
+    }
+    fn param_index(x: usize, y: usize, param: usize) -> usize {
+        (y * SIZE + x) * 3 + param
+    }
+    fn matrix_index(test_param: usize, shape_param: usize) -> usize {
+        test_param * NUM_PARAMS + shape_param
+    }
+    for node_pos in 0..SIZE {
+        let param_a = param_index(node_pos, 0, 0);
+        let param_b = param_index(0, node_pos, 0);
+        let param_c = param_index(node_pos, SIZE - 1, 0);
+        let param_d = param_index(SIZE - 1, node_pos, 0);
+        for param in [param_a, param_b, param_c, param_d] {
+            for other_param in 0..NUM_PARAMS {
+                matrix[matrix_index(param, other_param)] = 0.0;
+                matrix[matrix_index(other_param, param)] = 0.0;
+                matrix[matrix_index(param, param)] = 1.0;
+            }
+        }
+    }
+    // println!("{:#?}", matrix);
+    // return;
+    let mut smat = TriMat::new((NUM_PARAMS, NUM_PARAMS));
+    for row in 0..NUM_PARAMS {
+        for col in 0..NUM_PARAMS {
+            let val = matrix[row * NUM_PARAMS + col];
+            if val != 0.0 {
+                smat.add_triplet(row, col, val);
+            }
+        }
+    }
+    let smat = smat.to_csc::<usize>();
+    let solver = Ldl::new().numeric(smat.view()).unwrap();
+    let mut audio = Vec::new();
+
+    loop {
+        let mut vector = [0.0; NUM_PARAMS];
+        for (ely, elx) in (0..SIZE - 1).cartesian_product(0..SIZE - 1) {
+            let index = param_index(ely, elx, 0);
+            for (test_fn, shape_fn) in (FUNCTIONS.iter()).cartesian_product(FUNCTIONS.iter()) {
+                let test_fn_node = index + test_fn.node_offset;
+                let shape_fn_node = index + shape_fn.node_offset;
+                vector[test_fn_node] += b[shape_fn_node] * 2.0 / dt2
+                    * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind);
+                vector[test_fn_node] -= a[shape_fn_node] * 1.0 / dt2
+                    * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind);
+                // Basic wave equation
+                // vector[test_fn_node] -= b[shape_fn_node]
+                //     * int_two_hermite_poly_d1s(test_fn.x_kind, shape_fn.x_kind)
+                //     * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind);
+                // vector[test_fn_node] -= b[shape_fn_node]
+                //     * int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                //     * int_two_hermite_poly_d1s(test_fn.y_kind, shape_fn.y_kind);
+                // Kirchhoff-Love plate equation
+                let fac = (int_two_hermite_poly_d2s(test_fn.x_kind, shape_fn.x_kind)
+                    * int_two_hermite_polys(test_fn.y_kind, shape_fn.y_kind))
+                    + (int_two_hermite_polys(test_fn.x_kind, shape_fn.x_kind)
+                        * int_two_hermite_poly_d2s(test_fn.y_kind, shape_fn.y_kind))
+                    + ((int_hermite_poly_and_d2(shape_fn.x_kind, test_fn.x_kind)
+                        * int_hermite_poly_and_d2(test_fn.y_kind, shape_fn.y_kind))
+                        + (int_hermite_poly_and_d2(test_fn.x_kind, shape_fn.x_kind)
+                            * int_hermite_poly_and_d2(shape_fn.y_kind, test_fn.y_kind)));
+                vector[test_fn_node] -= b[shape_fn_node] * fac;
+                vector[test_fn_node] -= (b[shape_fn_node] - a[shape_fn_node]) * fac / dt * 1e-3;
+            }
+        }
+        for node_pos in 0..SIZE {
+            for index in [
+                param_index(node_pos, 0, 0),
+                param_index(0, node_pos, 0),
+                param_index(node_pos, SIZE - 1, 0),
+                param_index(SIZE - 1, node_pos, 0),
+            ] {
+                vector[index] = 0.0;
+            }
+        }
+
+        let vector = solver.solve(&vector[..]);
+        // println!("{:.4?}", c);
+        // println!("{:.4?}", vector);
+
+        if frame % 100 == 0 {
+            println!("frame {}", frame);
+            window.clear(0.0);
+            window.shade(|pos| {
+                let x = (pos.x * 0.999 * SIZE as f32) as usize;
+                let y = (pos.y * 0.999 * SIZE as f32) as usize;
+                b[(y * SIZE + x) * 3] as f32
+            });
+            window.show();
+            // window.wait_until_click();
+        }
+        if frame % 1000 == 999 {
+            save_audio_to_file(&audio);
+        }
+        frame += 1;
+
+        a = b;
+        b = vector.try_into().unwrap();
+
+        audio.push(b[param_index(SIZE / 2, SIZE / 4, 0)]);
+    }
+
+    save_audio_to_file(&audio);
+}
+
 fn main() {
     // compute_plate_matrix();
-    main4();
+    main5();
     return;
 
     let mut string = GuitarString::new();

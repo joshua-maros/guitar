@@ -3,6 +3,6 @@ pub const GUITAR_STRING_LENGTH: f64 = 0.65;
 pub const GUITAR_STRING_DENSITY: f64 = 5.25e-3;
 pub const GUITAR_STRING_TENSION: f64 = 120.0;
 pub const INTERNAL_DISSIPATIVE_TERM_OF_VISCOELASTIC_TYPE: f64 = 9e-8;
-pub const DELTA_TIME: f64 = 5e-7;
+pub const DELTA_TIME: f64 = 5e-6;
 pub const MAX_SIMULATION_TIME: f64 = 3.0;
 pub const SCREEN_REFRESH_INTERVAL: usize = 5_000;
