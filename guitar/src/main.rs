@@ -635,7 +635,9 @@ fn main4() {
 }
 
 fn main5() {
-    let mut window = Canvas::new(512, 512);
+    let mut string_window = Canvas::new(512, 512);
+    let mut plate_window = Canvas::new(512, 512);
+    let mut string = GuitarString::new();
 
     let mut a = vec![0.0; BOARD_PARAMS];
     let transient_size = (BOARD_SIZE / 15.0).powi(2);
@@ -655,6 +657,7 @@ fn main5() {
             // let yv = (y * PI).cos();
             // let xd = -(x * PI).sin() * PI / (SIZE as FLOAT);
             // let yd = -(y * PI).sin() * PI / (SIZE as FLOAT);
+            continue;
             a[i * 3] = xv * yv * transient_height;
             a[i * 3 + 1] = xd * yv * transient_height;
             a[i * 3 + 2] = xv * yd * transient_height;
@@ -729,6 +732,12 @@ fn main5() {
     const RESISTANCE: FLOAT = BOARD_RIGIDITY * BOARD_ALPHA * BOARD_ALPHA * BOARD_ALPHA;
 
     loop {
+        let time = frame as FLOAT * DELTA_TIME;
+        let anchor_idx = param_index(BOARD_RES / 2, BOARD_RES / 6, 0);
+        let anchor_disp = b[anchor_idx];
+        string.update(time, anchor_disp);
+        let tension = string.end_tension();
+
         let mut vector = [0.0; BOARD_PARAMS];
         for (ely, elx) in (0..BOARD_RES - 1).cartesian_product(0..BOARD_RES - 1) {
             let index = param_index(ely, elx, 0);
@@ -756,6 +765,7 @@ fn main5() {
                     * BOARD_DISSIPATIVE_TERM;
             }
         }
+        vector[anchor_idx] -= tension;
         for node_pos in 0..BOARD_RES {
             for index in [
                 param_index(node_pos, 0, 0),
@@ -771,17 +781,21 @@ fn main5() {
         // println!("{:.4?}", c);
         // println!("{:.4?}", vector);
 
-        if frame % 100 == 0 {
-            println!("{:.2}ms", frame as FLOAT * DELTA_TIME * 1000.0);
-            window.clear(0.0);
-            window.shade(|pos| {
+        if frame % 1_000 == 0 {
+            println!("{:.2}ms", time * 1000.0);
+            string_window.clear(0.0);
+            update_window(&mut string_window, &string);
+            string_window.show();
+            plate_window.clear(0.0);
+            plate_window.shade(|pos| {
                 let x = (pos.x * 0.999 * BOARD_RES as f32) as usize;
                 let y = (pos.y * 0.999 * BOARD_RES as f32) as usize;
                 b[(y * BOARD_RES + x) * 3] as f32
             });
-            window.show();
+            plate_window.normalize();
+            plate_window.show();
         }
-        if frame % 1000 == 999 {
+        if frame % 10_000 == 1 {
             save_audio_to_file(&audio);
         }
         frame += 1;
@@ -789,17 +803,13 @@ fn main5() {
         a = b;
         b = vector.try_into().unwrap();
 
-        audio.push(b[param_index(BOARD_RES / 2, BOARD_RES / 4, 0)]);
+        audio.push(b[param_index(3 * BOARD_RES / 4, 3 * BOARD_RES / 4, 0)]);
     }
 
     save_audio_to_file(&audio);
 }
 
 fn main() {
-    // compute_plate_matrix();
-    main5();
-    return;
-
     let mut string = GuitarString::new();
 
     let mut window = Canvas::new(512, 512);
@@ -818,7 +828,7 @@ fn main() {
             update_window(&mut window, &string);
         }
 
-        string.update(t);
+        string.update(t, 0.0);
         audio_data.push(string.pickup(0.5));
     }
 

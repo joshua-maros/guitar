@@ -67,15 +67,22 @@ impl GuitarString {
         }
     }
 
-    pub fn update(&mut self, current_time: f64) {
+    pub fn update(&mut self, current_time: f64, end_height: f64) {
         self.update_curvature();
         self.update_velocity(current_time);
         self.update_displacement();
         self.points[0] = StringPoint::default();
         self.points[GUITAR_STRING_POINTS - 1] = StringPoint::default();
+        self.points[GUITAR_STRING_POINTS - 1].displacement = end_height;
         for i in 0..GUITAR_STRING_POINTS {
             self.points[i].previous_curvature = self.points[i].current_curvature;
         }
+    }
+
+    pub fn end_tension(&self) -> f64 {
+        let diff = self.points[GUITAR_STRING_POINTS - 1].displacement
+            - self.points[GUITAR_STRING_POINTS - 2].displacement;
+        GUITAR_STRING_TENSION * diff / (GUITAR_STRING_LENGTH / (GUITAR_STRING_POINTS - 1) as f64)
     }
 
     pub fn draw(&self, onto: &mut Canvas<f32>) {
